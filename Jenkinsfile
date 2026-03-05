@@ -9,16 +9,24 @@ pipeline {
       }
     }
 
-    stage('Build Docker Image') {
+    stage('Build & Push Images') {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'DOCKER_HUB_PASS_U',
-                         usernameVariable: 'USER',
-                         passwordVariable: 'PASS')]) {
-
+        withCredentials([usernamePassword(
+          credentialsId: 'DOCKER_HUB_PASS_U',
+          usernameVariable: 'USER',
+          passwordVariable: 'PASS'
+        )]) {
           sh '''
-          docker login -u $USER -p $PASS
-          docker build -t $USER/devops-exam-app:latest .
-          docker push $USER/devops-exam-app:latest
+            set -e
+            echo "$PASS" | docker login -u "$USER" --password-stdin
+
+            # Build
+            docker build -t "$USER/movie_service:latest" ./movie-service
+            docker build -t "$USER/cast_service:latest"  ./cast-service
+
+            # Push
+            docker push "$USER/movie_service:latest"
+            docker push "$USER/cast_service:latest"
           '''
         }
       }
@@ -28,7 +36,8 @@ pipeline {
       steps {
         withCredentials([file(credentialsId: 'config', variable: 'KUBECONFIG')]) {
           sh '''
-          helm upgrade --install app charts -n dev
+            set -e
+            helm upgrade --install app ./charts -n dev
           '''
         }
       }
