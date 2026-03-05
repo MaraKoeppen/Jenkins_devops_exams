@@ -22,7 +22,7 @@ pipeline {
 
             # Build
             docker build -t "$USER/movie_service:latest" ./movie-service
-            docker build -t "$USER/cast_service:latest" ./cast-service
+            docker build -t "$USER/cast_service:latest"  ./cast-service
 
             # Push
             docker push "$USER/movie_service:latest"
@@ -35,13 +35,13 @@ pipeline {
     stage('Deploy (dev/qa/staging + manual prod)') {
       steps {
         script {
-
-          // Multibranch setzt BRANCH_NAME; fallback für andere Job-Typen
-          def branch = env.BRANCH_NAME ?: sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+          // Robust branch detection for "Pipeline script from SCM" (often detached HEAD)
+          def branch = env.GIT_BRANCH ?: env.BRANCH_NAME ?: "unknown"
           echo "Branch detected: ${branch}"
 
-          // Auto-Deploy: immer dev, zusätzlich qa/staging nur auf master
-          def autoNamespaces = (branch == 'master') ? ['dev', 'qa', 'staging'] : ['dev']
+          // Auto-Deploy: always dev; additionally qa/staging only on master
+          def isMaster = branch.contains('master')
+          def autoNamespaces = isMaster ? ['dev', 'qa', 'staging'] : ['dev']
 
           withCredentials([file(credentialsId: 'config', variable: 'KUBECONFIG')]) {
 
@@ -50,8 +50,8 @@ pipeline {
               sh "helm upgrade --install app ./charts -n ${ns}"
             }
 
-            // PROD: nur manuell + nur master
-            if (branch == 'master') {
+            // PROD: manual + only from master
+            if (isMaster) {
               input message: "Deploy to PROD (namespace: prod) from master?", ok: "Deploy PROD"
               sh "helm upgrade --install app ./charts -n prod"
             } else {
